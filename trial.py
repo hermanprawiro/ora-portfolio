@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 symbols = ['dash', 'dcr', 'eth', 'ltc', 'sc', 'str', 'xmr', 'xrp']
+# symbols = ['eth', 'ltc', 'xrp', 'etc', 'dash', 'xmr', 'xem', 'fct', 'gnt', 'zec']
 
 def global_price():
     """
@@ -40,7 +41,7 @@ def price_change(prices):
     changes = prices.clone()
     # print(changes.shape)
     changes[:, :, :, 1:] = changes[:, :, :, 1:] / changes[:, :, :, :-1]
-    return changes[:, :, :, -1]
+    return changes[:, :, :, -1].view(-1, len(symbols)+1)
 
 def normalize_prices(prices):
     output = prices.copy()
@@ -53,8 +54,8 @@ class CNN(nn.Module):
         self.cash_bias = nn.Parameter(torch.ones(1, 1, 1, 1))
         self.conv1 = nn.Conv2d(1, 1, kernel_size=(1, 3))
         self.conv2 = nn.Conv2d(1, 20, kernel_size=(1, 48))
-        self.conv3 = nn.Conv2d(21, 1, kernel_size=(1, 1))
-        self.softmax = nn.Softmax(dim=2)
+        self.conv3 = nn.Conv2d(20, 1, kernel_size=(1, 1))
+        self.softmax = nn.Softmax(dim=1)
         self.relu = nn.ReLU()
 
     def forward(self, x):
@@ -64,9 +65,10 @@ class CNN(nn.Module):
         wt = wt.view(1, 1, -1, 1)
         output = self.relu(self.conv1(price))
         output = self.relu(self.conv2(output))
-        output = torch.cat((wt, output), dim=1)
+        # output = torch.cat((wt, output), dim=1)
         output = self.conv3(output)
         output = torch.cat((self.cash_bias, output), dim=2)
+        output = output.view(-1, output.shape[2])
         output = self.softmax(output)
         # print(output.shape)
         return output
@@ -78,7 +80,13 @@ class RewardLoss(nn.Module):
     def forward(self, x, y):
         prices, accum_loss = y
         changes = price_change(prices)
-        reward = -(x.squeeze().dot(changes.squeeze()) * -accum_loss)
+        # print(x.shape, changes.shape)
+        reward = -torch.sum(x * changes)
+        # reward = -(torch.sum(x * changes) * (-accum_loss))
+        # print(reward)
+        # reward = -(x.squeeze().dot(changes.squeeze()) * -accum_loss)
+        # reward = -(x.squeeze().dot(changes.squeeze()))
+        
         return reward
 
 def main():
@@ -94,13 +102,15 @@ def main():
     states = price_state(dataset)
     states = torch.from_numpy(states).float().unsqueeze(1)
 
-    train_ids = range(0, 24494)
-    test_ids = range(24494, 34992)
+    train_ids = range(18000, 24494)
+    test_ids = range(24494, len(states))
 
     wt_old = torch.from_numpy(np.array([1., 0., 0., 0., 0., 0., 0., 0., 0.])).float()
-    accum_loss = -1.
+    accum_loss = torch.tensor([1.])
 
+    accum_rewards_train = []
     for i in train_ids:
+    # for i in range(5):
         model.train()
         # prices = dataset[:, i:i+50]
         # prices = normalize_prices(prices)
@@ -114,14 +124,40 @@ def main():
         wt_old = output.squeeze()
 
         loss = criterion(output, (state, accum_loss))
-        print(i, loss)
-        accum_loss = loss
+        # accum_loss = accum_loss * -loss
+        # accum_loss = loss
+        accum_rewards_train.append(-loss)
+        if i % 1000 == 0:
+            print(i, loss)
+            print(output)
 
         optimizer.zero_grad()
         loss.backward(retain_graph=True)
         optimizer.step()
         # for param in model.parameters():
         #     print(param.data)
+    
+    accum_rewards_train = torch.tensor(accum_rewards_train)
+    print("Cummulative Return Train", torch.prod(accum_rewards_train))
+
+    wt_old = torch.from_numpy(np.array([1., 0., 0., 0., 0., 0., 0., 0., 0.])).float()
+    # accum_loss = torch.tensor([1.])
+    accum_rewards = []
+    with torch.no_grad():
+        for i in test_ids:
+            model.eval()
+            state = states[i].unsqueeze(0)
+            input = (state, wt_old)
+            output = model(input)
+
+            loss = criterion(output, (state, accum_loss))
+            accum_rewards.append(-loss)
+            if i % 1000 == 0:
+                print(i, loss)
+                print(output)
+
+    accum_rewards = torch.tensor(accum_rewards)
+    print("Cummulative Return Test", torch.prod(accum_rewards))
 
 if __name__ == "__main__":
     # price_change()
