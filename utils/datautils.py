@@ -7,7 +7,7 @@ def get_symbols_list():
     symbols = ['eth', 'ltc', 'xrp', 'etc', 'dash', 'xmr', 'xem', 'fct', 'gnt', 'zec'] # used in paper
     return symbols
 
-def get_global_price():
+def get_global_price(column='close'):
     """
     Construct Global Price Matrix
     Read all json data, then take the closing price
@@ -21,9 +21,9 @@ def get_global_price():
     for sym in get_symbols_list():
         coin = pd.read_json('./data/json/btc_{}.json'.format(sym))
         coin = coin.set_index('date')
-        coin_join = times.join(coin['close'])
+        coin_join = times.join(coin[column])
         coin_join = coin_join.fillna(method='bfill')
-        prices.append(coin_join.close)
+        prices.append(coin_join[column])
     prices = np.array(prices) # n x t shaped (n = num of assets, t = num of period)
     prices = np.insert(prices, 0, 1, axis=0) # (n+1) x t (btc on the top)
     return prices
