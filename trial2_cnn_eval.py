@@ -75,10 +75,11 @@ class RewardLoss(nn.Module):
         wt_prime = (changes * last_w) / torch.sum(changes * last_w, dim=1)
         mu = 1 - (torch.sum(torch.abs(wt_prime - x), dim=1) * self.c)
         portfolio_value = torch.sum(changes * x, dim=1) * mu
+        # print(portfolio_value, torch.sum(changes * x, dim=1))
 
         reward = -torch.mean(torch.log(portfolio_value))
         
-        return reward
+        return reward, portfolio_value.squeeze()
 
 def main():
     data_close = datautils.get_global_price()
@@ -96,44 +97,14 @@ def main():
     states = price_state(data_close)
     states = torch.from_numpy(states).float().unsqueeze(1)
 
-    train_ids = range(0, 24494)
     test_ids = range(24494, len(states))
-
-    wt_old = torch.cat((torch.ones(1), torch.zeros(len(symbols))))
-    train_portfolio = []
-    train_loss = []
-    for i in train_ids:
-        model.train()
-        state = states[i].unsqueeze(0)
-
-        input = (state, wt_old)
-        output = model(input)
-        train_portfolio.append(output)
-        # print(output)
-
-        wt_old = output.squeeze()
-
-        loss = criterion(output, state, wt_old)
-        train_loss.append(loss)
-
-        if i % 100 == 0:
-            print(i, loss)
-            print(output)
-
-        optimizer.zero_grad()
-        loss.backward(retain_graph=True)
-        optimizer.step()
-
-    # Save Checkpoint
-    checkpoint = {
-        'state_dict': model.state_dict(),
-        'optimizer': optimizer.state_dict(),
-        'train_portfolio': train_portfolio,
-    }
-    torch.save(checkpoint, './checkpoints/trial2_cnn.pth.tar')
+    checkpoint = torch.load('./checkpoints/trial2_cnn.pth.tar')
+    model.load_state_dict(checkpoint['state_dict'])
 
     wt_old = torch.cat((torch.ones(1), torch.zeros(len(symbols))))
     test_portfolio = []
+    test_portfolio.append(wt_old.unsqueeze(0))
+    test_pv = []
     with torch.no_grad():
         for i in test_ids:
             model.eval()
@@ -142,14 +113,15 @@ def main():
             output = model(input)
             test_portfolio.append(output)
 
-            loss = criterion(output, state, wt_old)
+            loss, portfolio_value = criterion(output, state, wt_old)
+            test_pv.append(portfolio_value)
             if i % 1000 == 0:
                 print(i, loss)
                 print(output)
     
     torch.save({'test_portfolio': test_portfolio}, './checkpoints/trial2_cnn_test.pth.tar')
-
-    plt.plot(train_loss)
+    test_pv = torch.stack(test_pv).squeeze().detach().numpy()
+    plt.plot(np.cumprod(test_pv))
     plt.show()
 
 if __name__ == "__main__":

@@ -4,7 +4,8 @@ import os
 
 def get_symbols_list():
     # symbols = ['dash', 'dcr', 'eth', 'ltc', 'sc', 'str', 'xmr', 'xrp']
-    symbols = ['eth', 'ltc', 'xrp', 'etc', 'dash', 'xmr', 'xem', 'fct', 'gnt', 'zec'] # used in paper
+    # symbols = ['eth', 'ltc', 'xrp', 'etc', 'dash', 'xmr', 'xem', 'fct', 'gnt', 'zec'] # used in paper
+    symbols = ['eth', 'ltc', 'xrp', 'etc', 'dash', 'xmr', 'xem', 'fct', 'gnt', 'usdt', 'zec']
     return symbols
 
 def get_global_price(column='close'):
@@ -27,6 +28,31 @@ def get_global_price(column='close'):
     prices = np.array(prices) # n x t shaped (n = num of assets, t = num of period)
     prices = np.insert(prices, 0, 1, axis=0) # (n+1) x t (btc on the top)
     return prices
+
+def get_global_price_paper(column='close', backtest=1):
+    # Total 34913
+    # Train 32457 (0-32456)
+    # Test 2457 (32456-34912)
+    times = get_timeframe_paper(backtest=backtest)
+
+    prices = []
+    for sym in get_symbols_list():
+        coin = pd.read_json('./data/json/paper_btc_{}.json'.format(sym))
+        coin = coin.set_index('date')
+        coin_join = times.join(coin[column])
+        coin_join = coin_join.fillna(method='bfill')
+        prices.append(coin_join[column])
+    prices = np.array(prices) # n x t shaped (n = num of assets, t = num of period)
+    prices = np.insert(prices, 0, 1, axis=0) # (n+1) x t (btc on the top)
+    return prices
+
+def get_timeframe_paper(backtest=1):
+    if backtest == 1:
+        return pd.date_range('2014-11-01 00:00', '2016-10-28 08:00', freq='30min')
+    elif backtest == 2:
+        return pd.date_range('2015-02-01 00:00', '2017-01-27 08:00', freq='30min')
+    else:
+        return pd.date_range('2015-05-01 00:00', '2017-04-27 08:00', freq='30min')
 
 def get_daily_return(prices):
     """
