@@ -58,8 +58,8 @@ def get_timeframe_paper(backtest=1):
 def price_state(prices, period_window=50):
     num_of_assets = prices.shape[0] # n
     num_of_periods = prices.shape[1] # t
-    states = np.zeros((num_of_periods - period_window, num_of_assets, period_window)) # t - period window x n x period_window
-    for i in range(period_window, num_of_periods):
+    states = np.zeros((num_of_periods - period_window + 1, num_of_assets, period_window)) # t - period window x n x period_window
+    for i in range(period_window, num_of_periods + 1):
         states[i - period_window] = normalize_prices(prices[:, i - period_window:i])
     return states
 
